@@ -235,9 +235,9 @@ For each section you zoomed into, do TWO things: identify components, and write 
 
 **Asset classification** — how each component should be built:
 - `code` — standard React component (default)
-- `svg-extract` — vector icons/logos (use `treble show` to render, then extract)
-- `icon-library` — matches a known icon library (Lucide: Mail, Phone, ArrowRight, Check, Menu, X, Search, etc.)
-- `image-extract` — photos, illustrations → extract as image files
+- `svg-extract` — vector icons/logos. **Reality check:** `treble show` renders PNGs, not SVGs. For svg-extract assets, describe the shape, colors, and approximate dimensions in your notes so the build agent can write an inline SVG placeholder. Do NOT block the build order on SVG extraction — place svg-extract assets early in the build order but mark them with `"placeholder": true` so the build agent writes a simple SVG stand-in that can be swapped later.
+- `icon-library` — matches a known icon library (Lucide: Mail, Phone, ArrowRight, Check, Menu, X, Search, etc.). **Prefer this over svg-extract** whenever a Lucide icon is a reasonable match — it's more robust and doesn't require manual asset extraction.
+- `image-extract` — photos, illustrations → extract as image files. Since images need manual export from Figma, include `placeholderColor` (dominant color from the image area) and `aspectRatio` in the component definition so the build agent can render a colored placeholder `<div>` with the correct dimensions.
 
 **shadcn/ui anchoring** — match to primitives where possible:
 - Button, Input, Label, Badge, Card, Dialog, DropdownMenu, Select, Textarea, Avatar, etc.
@@ -286,6 +286,69 @@ visible border or shadow."
 
 The difference between a pixel-perfect build and a generic-looking build is entirely in these notes. Take the time to describe what you see.
 
+### 3c. Generate `projectSetup` (CRITICAL)
+
+The analysis must produce an executable project setup that the build agent runs BEFORE writing any component. Without this, the build agent will generate code that references nonexistent Tailwind classes, missing fonts, or uninstalled shadcn components.
+
+**Generate these from your design system analysis:**
+
+1. **Tailwind config overrides** — exact `theme.extend` entries for colors, fonts, border-radius, and any custom values. Map every design token to a Tailwind class name. Use semantic names (e.g., `primary`, `accent`, `surface`) not Figma layer names.
+
+2. **Font declarations** — `@font-face` rules or Google Fonts import URLs. For each font family used in the design:
+   - Identify the font name and weights used
+   - Check if it's a Google Font, Adobe Font, or local-only
+   - If it's a trial/proprietary font (e.g., "Aeonik TRIAL"), note the closest free alternative as a fallback
+   - Generate the CSS `@font-face` or `@import` declaration
+
+3. **Global CSS** — base styles that apply page-wide: body background color, default text color, font-smoothing, any CSS custom properties needed.
+
+4. **shadcn components to install** — list every shadcn component matched in the analysis. The build agent will run `npx shadcn@latest add <name>` for each.
+
+5. **npm dependencies** — any packages needed beyond the framework defaults (e.g., `lucide-react` for icons, `embla-carousel-react` for carousels).
+
+6. **Setup commands** — ordered list of shell commands to bootstrap the project. These run once before any component code is written.
+
+### 3d. Generate `tailwindClasses` per component
+
+For every component, pre-compute the Tailwind class strings the build agent should use. This eliminates interpretation errors — the build agent copies these classes directly rather than trying to translate `implementationNotes` into Tailwind.
+
+**Format:**
+```json
+"tailwindClasses": {
+  "container": "flex items-center justify-between h-16 px-6 max-w-7xl mx-auto",
+  "primary": "bg-[#CDB07A] text-[#25282A] rounded-full px-6 h-10 text-[15px]",
+  "heading": "text-5xl font-bold leading-tight tracking-tight text-white"
+}
+```
+
+Keys should be semantic — `container`, `wrapper`, `heading`, `subtext`, `cta`, or variant names like `primary`, `ghost`, `outline`. The build agent uses these as the SOURCE OF TRUTH for styling.
+
+**Rules for tailwindClasses:**
+- Use the custom theme values from `projectSetup.tailwindConfig` where they exist (e.g., `bg-primary` instead of `bg-[#1F3060]`)
+- Fall back to arbitrary values `[#hex]` only when no theme token exists
+- Include responsive prefixes if the design implies breakpoint behavior
+- Each key maps to a single element or variant — don't combine unrelated elements
+
+### 3e. Robustness checklist
+
+Before finalizing the analysis, verify:
+
+1. **Every font has a fallback.** If the design uses a proprietary or trial font, specify a system/Google font fallback in `projectSetup.fonts[].fallback`. The build agent must be able to render SOMETHING even without the exact font.
+
+2. **Every color is in the palette.** Scan all `implementationNotes` and `tailwindClasses` for hex values. Every hex should appear in `designSystem.palette`. If you find one-off colors, either add them to the palette or note them as `designSystem.inconsistencies`.
+
+3. **Every `composedOf` dependency exists.** If component A lists component B in `composedOf`, component B MUST exist in the `components` map and appear earlier in `buildOrder`.
+
+4. **Every `shadcnMatch` component is in `projectSetup.shadcnComponents`.** The build agent installs these before writing code.
+
+5. **Build order has no orphans.** Every component in the `components` map must appear in `buildOrder`. Every entry in `buildOrder` must exist in `components`.
+
+6. **svg-extract assets have shape descriptions.** Since treble can't export SVGs, every svg-extract component must have enough detail in `implementationNotes` to write a placeholder SVG (shape, viewBox dimensions, fill color, stroke).
+
+7. **image-extract assets have placeholder info.** Every image-extract component must have `placeholderColor` and `aspectRatio` so the build renders a reasonable stand-in.
+
+8. **No component references nonexistent Tailwind classes.** Cross-reference `tailwindClasses` values against the theme config. If a class like `text-primary` is used, `primary` must be in `projectSetup.tailwindConfig.theme.extend.colors`.
+
 ## Step 4: Write analysis.json
 
 Write the analysis to `.treble/analysis.json` with this structure:
@@ -295,12 +358,53 @@ Write the analysis to `.treble/analysis.json` with this structure:
   "version": 2,
   "figmaFileKey": "from-.treble/config.toml",
   "analyzedAt": "ISO-8601 timestamp",
+  "projectSetup": {
+    "tailwindConfig": {
+      "theme": {
+        "extend": {
+          "colors": {
+            "primary": "#1F3060",
+            "accent": "#CDB07A",
+            "surface": "#F8F9FA"
+          },
+          "fontFamily": {
+            "heading": ["Aeonik TRIAL", "Inter", "sans-serif"],
+            "body": ["Neue Haas Grotesk", "system-ui", "sans-serif"]
+          },
+          "borderRadius": {
+            "pill": "9999px"
+          }
+        }
+      }
+    },
+    "fonts": [
+      {
+        "family": "Aeonik TRIAL",
+        "weights": [400, 700],
+        "source": "local",
+        "fallback": "Inter, sans-serif",
+        "notes": "Trial font — may need license or swap to Inter for production"
+      }
+    ],
+    "globalCSS": "@layer base {\n  body {\n    @apply bg-white text-gray-900 antialiased;\n    font-family: 'Neue Haas Grotesk', system-ui, sans-serif;\n  }\n}",
+    "dependencies": ["lucide-react"],
+    "shadcnComponents": ["button", "card", "badge", "input"],
+    "setupCommands": [
+      "npx shadcn@latest init -d",
+      "npx shadcn@latest add button card badge input",
+      "npm install lucide-react"
+    ]
+  },
   "designSystem": {
-    "palette": [{ "name": "primary", "hex": "#1F3060", "tailwind": "blue-900" }],
+    "palette": [{ "name": "primary", "hex": "#1F3060", "tailwind": "primary" }],
     "typeScale": [{ "name": "heading-1", "size": 48, "weight": 700, "lineHeight": 1.2, "tailwind": "text-5xl font-bold" }],
     "spacing": { "baseUnit": 4, "commonGaps": [8, 16, 24, 32, 48] },
-    "borderRadius": [{ "name": "full", "value": 9999, "tailwind": "rounded-full" }],
+    "borderRadius": [{ "name": "full", "value": 9999, "tailwind": "rounded-pill" }],
     "shadows": [],
+    "fonts": [
+      { "family": "Aeonik TRIAL", "role": "headings + buttons", "fallback": "Inter" },
+      { "family": "Neue Haas Grotesk", "role": "body text", "fallback": "system-ui" }
+    ],
     "inconsistencies": []
   },
   "components": {
@@ -314,11 +418,52 @@ Write the analysis to `.treble/analysis.json` with this structure:
       "variants": ["primary", "ghost", "outline"],
       "props": ["children: ReactNode", "variant: 'primary' | 'ghost' | 'outline'"],
       "tokens": { "bg": "#1F3060", "radius": "rounded-full", "px": "px-8" },
+      "tailwindClasses": {
+        "primary": "bg-accent text-[#25282A] rounded-pill px-6 h-10 text-[15px] font-normal hover:brightness-110 transition-all",
+        "ghost": "bg-transparent text-white border border-white/30 rounded-pill px-6 h-10 text-[15px] hover:bg-white/10 transition-all"
+      },
       "composedOf": [],
       "assetKind": "code",
       "filePath": "src/components/Button.tsx",
       "referenceImages": [".treble/figma/contact/snapshots/button.png"],
       "implementationNotes": "Pill-shaped button (rounded-full). Primary: bg #CDB07A, text #25282A, 15px Aeonik w400, height 40px, px-6. Ghost: transparent bg, white text, 1px white/30 border. Both have subtle hover brightness increase. Right-arrow Lucide icon when used as CTA (ArrowRight, 16px, ml-2)."
+    },
+    "EnjoinLogo": {
+      "tier": "atom",
+      "description": "Company logo — SVG wordmark",
+      "figmaNodes": [{ "nodeId": "55:5678", "nodeName": "Logo", "frameId": "322:1", "frameName": "Contact" }],
+      "shadcnMatch": null,
+      "variants": ["light", "dark"],
+      "props": ["variant: 'light' | 'dark'", "className?: string"],
+      "tokens": {},
+      "tailwindClasses": {
+        "container": "h-8 w-auto"
+      },
+      "composedOf": [],
+      "assetKind": "svg-extract",
+      "placeholder": true,
+      "filePath": "src/components/icons/EnjoinLogo.tsx",
+      "referenceImages": [".treble/figma/contact/snapshots/logo.png"],
+      "implementationNotes": "SVG wordmark, approximately 120x32px. Light variant: white fill. Dark variant: #1F3060 fill. Simple text wordmark 'ENJOIN' in a custom sans-serif. BUILD AGENT: write a placeholder <svg> with a <text> element; the real SVG will be swapped in later."
+    },
+    "HeroImage": {
+      "tier": "atom",
+      "description": "Hero background photo of healthcare professionals",
+      "figmaNodes": [{ "nodeId": "322:99", "nodeName": "HeroPhoto", "frameId": "322:1", "frameName": "Contact" }],
+      "shadcnMatch": null,
+      "variants": [],
+      "props": ["src?: string", "alt?: string"],
+      "tokens": {},
+      "tailwindClasses": {
+        "container": "absolute inset-0 w-full h-full object-cover"
+      },
+      "composedOf": [],
+      "assetKind": "image-extract",
+      "placeholderColor": "#2A4A4A",
+      "aspectRatio": "16/9",
+      "filePath": "src/components/HeroImage.tsx",
+      "referenceImages": [".treble/figma/contact/snapshots/hero-photo.png"],
+      "implementationNotes": "Full-bleed background photo, 1440x800. Shows healthcare professionals. BUILD AGENT: render a <div> with bg-[#2A4A4A] and the correct aspect ratio as placeholder. Accept src prop for when real image is added."
     },
     "HeroSection": {
       "tier": "organism",
@@ -328,7 +473,15 @@ Write the analysis to `.treble/analysis.json` with this structure:
       "variants": [],
       "props": [],
       "tokens": { "bg": "#F8F9FA" },
-      "composedOf": ["Heading", "Paragraph", "Button"],
+      "tailwindClasses": {
+        "wrapper": "relative w-full h-[800px] overflow-hidden",
+        "overlay": "absolute inset-0 bg-gradient-to-r from-black/70 to-transparent",
+        "content": "relative z-10 flex flex-col items-start justify-center h-full pl-20 max-w-[600px]",
+        "heading": "text-[56px] font-heading font-bold leading-tight tracking-tight text-white",
+        "subtitle": "text-lg font-body font-normal text-white/70 mt-6",
+        "cta": "mt-8"
+      },
+      "composedOf": ["HeroImage", "Button"],
       "assetKind": "code",
       "filePath": "src/components/HeroSection.tsx",
       "referenceImages": [
@@ -360,9 +513,11 @@ Write the analysis to `.treble/analysis.json` with this structure:
       "analyzedAt": "ISO-8601 timestamp"
     }
   },
-  "buildOrder": ["Logo", "NavLink", "Button", "Input", "Label", "Heading", "Paragraph", "NavBar", "HeroSection", "ContactFormSection", "Footer", "ContactPage"]
+  "buildOrder": ["EnjoinLogo", "HeroImage", "NavLink", "Button", "Input", "Label", "Heading", "Paragraph", "NavBar", "HeroSection", "ContactFormSection", "Footer", "ContactPage"]
 }
 ```
+
+**Note on the schema:** The `projectSetup` block is the FIRST thing the build agent reads and executes. Every `tailwindClasses` value references theme tokens defined in `projectSetup.tailwindConfig`. This creates a closed loop — nothing in the components can reference a class that doesn't exist.
 
 ### Validating figmaNode references
 
