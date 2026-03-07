@@ -2,54 +2,79 @@
 description: Compare implementation screenshot against Figma reference
 arguments:
   - name: component
-    description: Component name to compare
+    description: Component or page name to compare (e.g. "HeroSection", "Homepage")
     required: true
 ---
 
-# /compare — Visual Comparison
+# /treble:compare — Visual Comparison
 
-Compare a built component's rendered output against the Figma reference image.
+Compare a built component's rendered output against the Figma reference image. This does a REAL side-by-side comparison, not just a "does it render" check.
 
 ## Steps
 
-1. **Find the reference image** for the component:
-   - Look up the component in `.treble/analysis.json`
-   - Find which frame it belongs to (from `figmaNodes[].frameName`)
-   - Reference image is at `.treble/figma/{frame-slug}/reference.png`
-   - Section screenshots may be in `.treble/figma/{frame-slug}/sections/`
+### 1. Find the Figma reference
 
-2. **Take a screenshot** of the running dev server:
-   - The component should be running locally (e.g., `npm run dev`)
-   - If possible, try to match the resolution of the figma page
-   - Use the browser automation tools to capture a screenshot; you can take a screenshot of a given dom element if its more appropriate for comparison
+Look up the component in `.treble/analysis.json`:
+- Find `referenceImages` paths — these are the Figma screenshots on disk
+- If no referenceImages, render one: `treble show "{nodeId}" --frame "{frameName}" --json`
 
-3. **Compare visually**:
-   - Look at both images side by side
-   - Check: layout, spacing, colors, typography, alignment, responsive behavior
-   - Note any discrepancies; you obsess about pixel perfection
+### 2. Screenshot the implementation (via chrome-devtools-tester subagent)
 
-4. **Report findings**:
-   - List what matches
-   - List what differs
-   - Suggest specific fixes for discrepancies
+Spawn a `chrome-devtools-tester` subagent:
 
-## Comparison Criteria
+```
+Navigate to the running dev server (check localhost:3000, 3001, 5173, or whatever port is configured).
+Set viewport to 1440px width.
+Wait for full page load (network idle).
+Take a full-page screenshot and save to .treble/screenshots/{component}-impl.png
 
-- **Layout**: Element positions, flex direction, grid structure
-- **Spacing**: Margins, padding, gaps between elements
-- **Colors**: Background, text, border colors match design tokens
-- **Typography**: Font size, weight, line height, family
-- **Border Radius**: Matches design token values
-- **Shadows**: Correct shadow values applied
-- **Content**: Placeholder content appropriate for the component type
+If the component is a section (not a full page), scroll to it and take a targeted screenshot.
 
-## After comparison
+Return the screenshot file path.
+```
 
-If discrepancies found:
-1. Fix the implementation
-2. Re-compare
-3. Maximum 2 fix attempts before moving on
+### 3. Compare (via general-purpose subagent)
 
-If the component looks good:
-1. Update `.treble/build-state.json` — mark as `"implemented"`
-2. Move to the next component in build order
+Spawn a `general-purpose` subagent that reads BOTH images:
+
+```
+You are a pixel-perfectionist UI reviewer. Compare these two images:
+
+FIGMA DESIGN: Read {figma reference path}
+IMPLEMENTATION: Read .treble/screenshots/{component}-impl.png
+
+Go section by section. For EACH area, check:
+- LAYOUT: element positions, flex direction, grid structure, alignment
+- SPACING: margins, padding, gaps between elements
+- COLORS: backgrounds, text colors, borders, gradients
+- TYPOGRAPHY: font size, weight, line height, letter spacing, family
+- SHAPES: border radius, shadows, decorative elements
+- CONTENT: is placeholder content roughly appropriate?
+
+Be BRUTAL. Flag every difference no matter how small. This is about pixel perfection.
+
+Rate each section: MATCH / CLOSE / WRONG
+
+Return:
+{
+  "overall": "MATCH|CLOSE|WRONG",
+  "sections": [
+    {
+      "name": "section name",
+      "rating": "MATCH|CLOSE|WRONG",
+      "discrepancies": ["specific issue"],
+      "fix": "specific code change"
+    }
+  ],
+  "summary": "one sentence overall assessment"
+}
+```
+
+### 4. Report and fix
+
+Show the user the comparison results. If discrepancies found:
+1. Fix the implementation code
+2. Re-compare (max 2 fix-compare cycles)
+3. Update `.treble/build-state.json` with the review result
+
+**IMPORTANT:** The subagent approach keeps images out of the main context. NEVER read PNG files directly in the main conversation.

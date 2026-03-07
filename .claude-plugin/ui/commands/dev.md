@@ -26,6 +26,56 @@ If you see "image dimension limit" errors, run `/compact` before continuing.
 - `.treble/build-state.json` must exist
 - The project should have a package.json and dev server configured
 
+## Step 0: Project Bootstrap (run ONCE before the loop)
+
+### 0a. Font Setup
+
+Read `designSystem.fonts` from `analysis.json`. For EACH font:
+
+1. **If `isCommercial: true`** — the font files are NOT available yet:
+   - Use the `fallback` font stack as the primary font in CSS
+   - Write a `@font-face` placeholder comment: `/* TODO: add licensed {family} .woff2 files */`
+   - Configure Tailwind `fontFamily` to use the fallback: `heading: ["Inter", "system-ui", "sans-serif"]`
+   - Add `font-display: swap` so it's ready for when the real font is added
+   - **The build must look good with the fallback font.** Don't leave broken typography waiting for a font that may never arrive.
+
+2. **If not commercial** (Google Font, open source):
+   - Add `@import url('https://fonts.googleapis.com/css2?family={family}:wght@{weights}&display=swap')` to global CSS
+   - Configure Tailwind `fontFamily` with the real font name + fallback
+
+3. **For ALL fonts** — add metric-adjusted fallback to prevent layout shift:
+   ```css
+   @font-face {
+     font-family: "{family}-fallback";
+     src: local("Arial"); /* or closest system font */
+     size-adjust: 100%;   /* adjust when real metrics are known */
+     font-display: swap;
+   }
+   ```
+
+### 0b. Responsive Foundation
+
+Read `responsive` from `analysis.json`. Set up:
+
+1. **Base layout wrapper** — create a reusable pattern for sections:
+   ```tsx
+   // Full-bleed section: background edge-to-edge, content contained
+   <section className="w-full bg-[color]">
+     <div className="max-w-7xl mx-auto px-6">
+       {children}
+     </div>
+   </section>
+   ```
+
+2. **Tailwind config** — ensure breakpoints match the analysis:
+   - `sm: 640px`, `md: 768px`, `lg: 1024px`, `xl: 1280px` (Tailwind defaults are fine for most designs)
+
+3. **Global CSS** — add fluid typography helpers if the analysis uses `clamp()`:
+   ```css
+   .fluid-heading-xl { font-size: clamp(2.25rem, 2vw + 1.5rem, 3.25rem); }
+   .fluid-heading-lg { font-size: clamp(1.75rem, 1.5vw + 1rem, 2.5rem); }
+   ```
+
 ## The Loop
 
 For each component in the build order:
@@ -77,13 +127,62 @@ Write the component following these rules:
 - Pass concrete content to sections
 - File at `src/pages/{PageName}.tsx`
 
-**Assets:**
-- `svg-extract` → render via `treble show`, extract SVG, save to `src/components/icons/`
-- `icon-library` → import from lucide-react (or the matched library)
-- `image-extract` → check `extractedImages` in analysis.json first:
+**Assets — handle each `assetKind`:**
+
+- **`svg-extract` (logos, icons, brand marks)** — NEVER try to reproduce these with CSS text styling:
+  1. Render via `treble show "{nodeId}" --frame "{frameName}" --json` to get a screenshot
+  2. Check if the Figma node contains VECTOR children — if so, note the node ID for SVG export
+  3. Create a **real SVG placeholder component** at `src/components/icons/{Name}.tsx`:
+     ```tsx
+     // TODO: Replace with real SVG exported from Figma node {nodeId}
+     // Export: Figma → select node → right-click → Copy as SVG → SVGO → paste here
+     const Logo = ({ className, ...props }: React.SVGProps<SVGSVGElement>) => (
+       <svg viewBox="0 0 {width} {height}" fill="none" className={className} {...props}>
+         <rect width="{width}" height="{height}" rx="4" fill="#E5E7EB" />
+         <text x="50%" y="50%" textAnchor="middle" dy=".3em" fill="#9CA3AF" fontSize="12">
+           {Name}
+         </text>
+       </svg>
+     )
+     export { Logo }
+     ```
+  4. The placeholder must have the CORRECT dimensions (from Figma node width/height) and accept `className` + spread props
+  5. When the user provides the real SVG, they just paste it inside the component — the interface stays the same
+
+- **`icon-library`** → import from the matched icon library (e.g. `import { ArrowRight } from "lucide-react"`)
+
+- **`image-extract`** → check `extractedImages` in analysis.json first:
   - If `extractedImages` has entries, copy from `.treble/figma/{slug}/assets/{file}` → `public/images/`
   - Use `<img src="/images/{file}">` in the component code
   - If no extracted images exist, fall back to `treble show` to render a screenshot, or use placeholder colors
+
+**Responsive rules — apply to EVERY component:**
+
+The Figma frame is a fixed-width desktop reference. Your code must work at ALL viewport sizes.
+
+1. **Every section** must use the container pattern from `analysis.json → responsive`:
+   - Full-bleed: outer `w-full`, inner wrapper with `max-w-7xl mx-auto px-6` (or whatever the analysis specifies)
+   - NEVER hardcode `w-[1440px]` or any fixed pixel width on a section
+
+2. **Grids collapse on mobile** — read the section's `responsive.mobileBehavior`:
+   - 3-column → `grid-cols-1 md:grid-cols-2 lg:grid-cols-3`
+   - 2-column asymmetric → `grid-cols-1 lg:grid-cols-[2fr_1fr]`
+   - Side-by-side hero → `flex-col lg:flex-row`
+
+3. **Typography scales** — use `clamp()` for headings 24px+:
+   - `font-size: clamp(minRem, vw + rem, maxRem)` or Tailwind `text-[clamp(...)]`
+   - Body text (14-18px) stays fixed — no clamp needed
+
+4. **Navigation** — if the analysis says hamburger below 768px:
+   - Desktop links: `hidden md:flex`
+   - Hamburger button: `md:hidden`
+   - Mobile menu: `useState` toggle, full-width dropdown or slide-in
+
+5. **Spacing scales down** — hero padding, section gaps:
+   - Use responsive prefixes: `py-12 md:py-20 lg:py-28`
+   - Or fluid: `py-[clamp(3rem,5vw,7rem)]`
+
+6. **Images are fluid** — always `w-full h-auto` or `object-cover` with constrained container
 
 ### 4. Visual Review (MANDATORY — via subagent)
 
@@ -131,7 +230,7 @@ Return JSON:
       "name": "Hero",
       "rating": "CLOSE",
       "discrepancies": ["heading font too small — Figma shows ~56px, impl looks ~36px", "CTA button missing gold background"],
-      "suggestions": ["Change text-3xl to text-5xl", "Add bg-[#CDB07A] to button"]
+      "suggestions": ["Change text-3xl to text-5xl", "Add bg-accent to button"]
     }
   ]
 }

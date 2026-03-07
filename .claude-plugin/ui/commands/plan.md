@@ -128,7 +128,7 @@ You are analyzing ONE section of a Figma design for Treble's design planner.
    - Match to shadcn/ui if applicable (Button, Input, Card, Badge, etc.) with confidence 0.0-1.0
    - For `image-extract` components: reference the `image-map.json` entry — include `imageRef` and `localPath`
 
-5. Write DETAILED implementation notes for this section AND each component in it. Describe:
+6. Write DETAILED implementation notes for this section AND each component in it. Describe:
    - Layout technique (flex, grid, absolute)
    - Background treatment (solid, gradient, image+overlay)
    - Typography (font, size, weight, color, spacing)
@@ -138,7 +138,34 @@ You are analyzing ONE section of a Figma design for Treble's design planner.
    - Icon handling (which icon library, size)
    - Image handling (aspect ratio, object-fit, overlay)
 
-6. Check `image-map.json` for extracted source images in this frame:
+7. **Logo and SVG detection** — CRITICAL:
+   - If a node is a VECTOR, or a FRAME/GROUP containing mostly VECTOR children, or its name
+     contains "logo", "brand", "wordmark", "icon" — it is likely an SVG asset, NOT reproducible as text.
+   - Look at the screenshot. If you see a stylized wordmark, symbol, or graphic that is clearly NOT
+     plain styled text, classify it as `assetKind: "svg-extract"`.
+   - Do NOT try to reproduce logos with CSS text styling. Logos almost always need real SVG.
+   - For svg-extract assets: describe the visual (shape, colors, approximate dimensions) so the
+     builder can create a placeholder, but flag it clearly:
+     `"implementationNotes": "REQUIRES SVG EXTRACTION from Figma node [ID]. Placeholder only."`
+   - If the node has VECTOR children, the Figma API can export it as SVG — note this for the builder.
+
+8. **Font analysis** — for EVERY font family found in this section:
+   - Record the exact font name from Figma (e.g. "Some Font TRIAL", "Brand Sans Pro")
+   - Note if it appears to be commercial/licensed (keywords: "Pro", "TRIAL", "Display", unfamiliar names)
+   - Identify metric-compatible fallback: what system/Google font is closest? (e.g. "Inter" for geometric sans, "Georgia" for serif)
+   - Record all weights used (400, 500, 700, etc.)
+   - Include in `designTokens.fonts`:
+     ```json
+     {
+       "family": "Brand Sans TRIAL",
+       "weights": [400, 700],
+       "isCommercial": true,
+       "fallback": "'Closest Google Font', system-ui, sans-serif",
+       "notes": "Trial/commercial font — build with fallback, swap when licensed font files are provided"
+     }
+     ```
+
+9. Check `image-map.json` for extracted source images in this frame:
    ```bash
    cat .treble/figma/{frameSlug}/image-map.json 2>/dev/null
    ```
@@ -147,7 +174,7 @@ You are analyzing ONE section of a Figma design for Treble's design planner.
    `extractedImages: [{imageRef, localPath}]`. Read the actual image file if needed to understand
    what the photo depicts.
 
-7. Return your analysis as a JSON object with this structure:
+10. Return your analysis as a JSON object with this structure:
    ```json
    {
      "sectionName": "NavBar",
@@ -180,8 +207,8 @@ You are analyzing ONE section of a Figma design for Treble's design planner.
        "implementationNotes": "DETAILED section layout notes..."
      },
      "designTokens": {
-       "colors": [{"hex": "#1F3060", "usage": "primary background"}],
-       "fonts": [{"family": "Aeonik", "sizes": [15, 18, 48]}],
+       "colors": [{"hex": "#2A3B5C", "usage": "primary background"}],
+       "fonts": [{"family": "Design Font", "sizes": [15, 18, 48]}],
        "radii": [8, 9999],
        "shadows": []
      }
@@ -211,6 +238,45 @@ Once all subagents return, merge their results in the main context:
 3. **Determine build order** — assets first, atoms, molecules, organisms, pages last. Respect `composedOf` dependencies.
 4. **Assemble pages** — list sections in order (by y-position) with their components
 
+5. **Responsive layout strategy** — CRITICAL. Figma shows a fixed-width frame (usually 1440px), but the implementation must be responsive. For EVERY section, determine:
+
+   **Container strategy** — choose ONE per section:
+   - `full-bleed`: background extends edge-to-edge, content has a max-width inner wrapper
+     → detect: section background/fill extends to frame edges, content is inset
+     → CSS: outer `w-full bg-[color]`, inner `max-w-7xl mx-auto px-6`
+   - `contained`: section itself has a max-width
+     → detect: visible gutters on both sides in the Figma frame
+     → CSS: `max-w-7xl mx-auto px-6` on the section itself
+   - `fluid`: proportional to viewport, no max-width cap
+     → rare, only for full-screen heroes or viewport-height sections
+
+   **Content max-width inference from the 1440px frame:**
+   - Measure the horizontal padding between frame edge and content group
+   - content width = 1440 - (left padding + right padding)
+   - Map: ~1280px → `max-w-7xl`, ~1200px → `max-w-6xl`, ~1024px → `max-w-4xl`
+
+   **Grid collapse** — for multi-column layouts:
+   - If all columns are equal width → `grid-cols-1 md:grid-cols-2 lg:grid-cols-3` (or `auto-fit/minmax(280px, 1fr)`)
+   - If columns are asymmetric (e.g. 2/3 + 1/3) → explicit `grid-cols-[2fr_1fr]` → `grid-cols-1` on mobile
+   - Record the column count and whether items are uniform
+
+   **Navigation** — how it should transform:
+   - Desktop: horizontal link row
+   - < 768px: hamburger menu (this is the universal convention, don't skip it)
+   - If nav is the first child and sits at y=0 → `sticky top-0 z-50`
+
+   **Typography scaling** — use fluid `clamp()` for headings:
+   - Large headings (40px+): `clamp(2rem, 2vw + 1.5rem, 3.25rem)` (scales 32px→52px)
+   - Medium headings (24-36px): `clamp(1.5rem, 1vw + 1rem, 2.25rem)`
+   - Body text: usually stays fixed at 16px, no clamp needed
+
+   **Hero sections:**
+   - If height > 500px with background image → `min-h-[500px] md:min-h-[700px]` (scale down on mobile)
+   - Side-by-side hero (text + image) → stack vertically on mobile: `flex-col lg:flex-row`
+   - Hero padding scales: use `clamp(2rem, 5vw, 5rem)` for horizontal padding
+
+   Write these decisions into a top-level `"responsive"` block in each section entry AND into the component's `implementationNotes`.
+
 Write the analysis to `.treble/analysis.json`:
 
 ```json
@@ -219,12 +285,33 @@ Write the analysis to `.treble/analysis.json`:
   "figmaFileKey": "from-.treble/config.toml",
   "analyzedAt": "ISO-8601 timestamp",
   "designSystem": {
-    "palette": [{ "name": "primary", "hex": "#1F3060", "tailwind": "blue-900" }],
+    "palette": [{ "name": "primary", "hex": "#2A3B5C", "tailwind": "blue-900" }],
     "typeScale": [{ "name": "heading-1", "size": 48, "weight": 700, "lineHeight": 1.2, "tailwind": "text-5xl font-bold" }],
     "spacing": { "baseUnit": 4, "commonGaps": [8, 16, 24, 32, 48] },
     "borderRadius": [{ "name": "full", "value": 9999, "tailwind": "rounded-full" }],
     "shadows": [],
+    "fonts": [
+      {
+        "family": "Brand Sans TRIAL",
+        "weights": [400, 700],
+        "isCommercial": true,
+        "fallback": "'Closest Google Font', system-ui, sans-serif",
+        "notes": "Trial/commercial font — build with fallback first, swap when licensed .woff2 files are available"
+      }
+    ],
     "inconsistencies": []
+  },
+  "responsive": {
+    "frameWidth": 1440,
+    "contentMaxWidth": "max-w-7xl",
+    "contentPadding": "px-6",
+    "breakpoints": {
+      "mobile": "< 768px — single column, hamburger nav, stacked layouts",
+      "tablet": "768-1024px — 2-column grids, reduced heading sizes",
+      "desktop": "1024px+ — full layout as designed"
+    },
+    "navBehavior": "sticky top-0, hamburger below 768px",
+    "typographyScaling": "clamp() for headings, fixed for body"
   },
   "components": {
     "Button": {
@@ -236,13 +323,13 @@ Write the analysis to `.treble/analysis.json`:
       "shadcnMatch": { "component": "button", "confidence": 0.95, "block": null },
       "variants": ["primary", "ghost", "outline"],
       "props": ["children: ReactNode", "variant: 'primary' | 'ghost' | 'outline'"],
-      "tokens": { "bg": "#1F3060", "radius": "rounded-full", "px": "px-8" },
+      "tokens": { "bg": "primary", "radius": "rounded-full", "px": "px-8" },
       "composedOf": [],
       "assetKind": "code",
       "filePath": "src/components/Button.tsx",
       "referenceImages": [".treble/figma/contact/snapshots/button.png"],
       "extractedImages": [],
-      "implementationNotes": "Pill-shaped button (rounded-full). Primary: bg #CDB07A, text #25282A, 15px Aeonik w400, height 40px, px-6. Ghost: transparent bg, white text, 1px white/30 border. Both have subtle hover brightness increase. Right-arrow Lucide icon when used as CTA (ArrowRight, 16px, ml-2)."
+      "implementationNotes": "Pill-shaped button (rounded-full). Primary: bg accent color, dark text, 15px body font w400, height 40px, px-6. Ghost: transparent bg, white text, 1px white/30 border. Both have subtle hover brightness increase. Right-arrow icon when used as CTA (16px, ml-2)."
     },
     "HeroBackground": {
       "tier": "atom",
@@ -275,7 +362,13 @@ Write the analysis to `.treble/analysis.json`:
           "fullWidth": true,
           "containedAtoms": ["Logo", "NavLink", "Button"],
           "referenceImages": [".treble/figma/contact/snapshots/navbar.png"],
-          "implementationNotes": "Sticky top nav, white bg, subtle bottom border (1px #E5E7EB)."
+          "implementationNotes": "Sticky top nav, white bg, subtle bottom border (1px #E5E7EB).",
+          "responsive": {
+            "container": "full-bleed",
+            "innerMaxWidth": "max-w-7xl",
+            "mobileBehavior": "hamburger menu, logo + toggle only",
+            "notes": "Nav links hidden below 768px, replaced with hamburger. Logo stays visible."
+          }
         }
       ],
       "pageComponentName": "ContactPage",
