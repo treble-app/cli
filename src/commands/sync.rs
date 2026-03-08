@@ -293,7 +293,7 @@ pub async fn run(
         "  Fetching {} frame{} ({} batches)...",
         total_to_sync,
         if total_to_sync == 1 { "" } else { "s" },
-        (total_to_sync + NODE_BATCH_SIZE - 1) / NODE_BATCH_SIZE
+        total_to_sync.div_ceil(NODE_BATCH_SIZE)
     );
 
     let pb = ProgressBar::new(total_to_sync as u64);
@@ -647,9 +647,7 @@ fn interactive_select(canvas_pages: &[CanvasNode], all_frames: &[FrameInfo]) -> 
             let _width = term_width as usize;
 
             // Scroll window — keep cursor centered when possible
-            let scroll_offset = if visible.len() <= max_rows {
-                0
-            } else if cursor_pos < max_rows / 2 {
+            let scroll_offset = if visible.len() <= max_rows || cursor_pos < max_rows / 2 {
                 0
             } else if cursor_pos + max_rows / 2 >= visible.len() {
                 visible.len().saturating_sub(max_rows)
@@ -689,8 +687,6 @@ fn interactive_select(canvas_pages: &[CanvasNode], all_frames: &[FrameInfo]) -> 
                         // [+]/[-] or green ◼ when all selected
                         let marker = if sel == total && total > 0 {
                             format!("[{}]", "x".green())
-                        } else if page.expanded {
-                            "[ ]".to_string()
                         } else {
                             "[ ]".to_string()
                         };
@@ -799,9 +795,7 @@ fn interactive_select(canvas_pages: &[CanvasNode], all_frames: &[FrameInfo]) -> 
                         return Ok(Vec::new());
                     }
                     KeyCode::Up => {
-                        if cursor_pos > 0 {
-                            cursor_pos -= 1;
-                        }
+                        cursor_pos = cursor_pos.saturating_sub(1);
                     }
                     KeyCode::Down => {
                         let visible = build_visible(&pages);
@@ -901,7 +895,7 @@ struct SectionInfo {
 
 /// Clean a name for display: strip junk chars (↳), collapse whitespace, cap length.
 fn clean_display_name(name: &str, max: usize) -> String {
-    let cleaned = name.replace('↳', "").replace('→', "");
+    let cleaned = name.replace(['↳', '→'], "");
     truncate_display(&cleaned, max)
 }
 

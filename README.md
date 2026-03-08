@@ -39,26 +39,18 @@ The output is a real project — `npm run dev` works, components match the Figma
 
 ## Quick start
 
-### 1. Install the CLI
-
-```bash
-npm install -g @treble-app/cli
-```
-
-Or run without installing:
-
-```bash
-npx @treble-app/cli --help
-```
-
-### 2. Install the Claude Code plugin
-
-The CLI syncs your Figma data. The Claude Code plugin does the AI analysis and code generation. You need both.
+### 1. Install the Claude Code plugin
 
 In [Claude Code](https://claude.ai/code):
 
 ```
-/install-plugin treble-app/treble-cli
+/install-plugin treble-app/cli
+```
+
+### 2. Install the CLI
+
+```bash
+npm install -g @treble-app/cli
 ```
 
 ### 3. Authenticate with Figma
@@ -67,47 +59,27 @@ In [Claude Code](https://claude.ai/code):
 treble login --pat
 ```
 
-This stores your token in `~/.treble/config.toml` (never in your project directory).
-
-### 4. Initialize a project
-
-```bash
-mkdir my-site && cd my-site
-treble init "https://www.figma.com/design/abc123/My-Design"
-```
-
-This creates `.treble/config.toml` with your Figma file key.
-
-### 5. Sync your design
-
-```bash
-treble sync
-```
-
-Interactive mode — pick which frames to sync:
-
-```bash
-treble sync -i
-```
-
-After syncing, your `.treble/figma/` directory contains everything: reference screenshots, full layer trees with visual properties, and section-level snapshots. Zero API calls from this point on.
-
-### 6. Plan and build (in Claude Code)
+### 4. Go
 
 ```
-/treble:plan          # Analyze → writes analysis.json + build-state.json
-/treble:dev           # Classify → pick stack → scaffold → build all components
-/treble:cms           # Wire up CMS (Sanity, Prismic, or WordPress)
+/treble:sync          # Checks CLI + auth, helps you pick frames, syncs to disk
+/treble:plan          # Analyzes your design → component inventory + build order
+/treble:dev           # Picks the right stack, scaffolds, builds every component
+/treble:cms           # Wires up CMS (Sanity, Prismic, or WordPress)
 ```
+
+That's it. `/treble:sync` handles initialization, frame selection, and preflight checks — it will tell you if anything is missing.
 
 ## CLI reference
 
 ```bash
 treble login --pat                       # Store Figma personal access token
 treble login                             # OAuth via treble.build (if available)
-treble init "FIGMA_URL_OR_KEY"           # Initialize .treble/ in current directory
+treble status                            # Check auth + project state
+treble status --json                     # Machine-readable (for agents)
+treble init --figma "FIGMA_URL_OR_KEY"   # Initialize .treble/ in current directory
 treble sync                              # Pull all Figma frames to disk
-treble sync -i                           # Interactive frame picker
+treble sync -i                           # Interactive frame picker (TUI)
 treble sync --frame "Contact"            # Sync one frame by name
 treble sync --page "Homepage"            # Sync all frames from one page
 treble sync --force                      # Re-sync even if already cached
@@ -127,6 +99,7 @@ These run inside Claude Code with the treble plugin installed:
 
 | Command | What it does |
 |---------|-------------|
+| `/treble:sync` | Preflight checks, smart frame selection, sync Figma to disk |
 | `/treble:plan` | Analyze synced Figma data → component inventory, design tokens, build order |
 | `/treble:dev` | Classify design → pick stack → scaffold → build loop with visual review |
 | `/treble:cms` | Wire up CMS editability (Sanity, Prismic, or WordPress) |

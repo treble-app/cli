@@ -76,8 +76,9 @@ pub struct ProjectConfig {
 impl ProjectConfig {
     pub fn load(project_dir: &Path) -> Result<Self> {
         let path = project_dir.join(".treble").join("config.toml");
-        let content = std::fs::read_to_string(&path)
-            .with_context(|| format!("No .treble/config.toml found. Run `treble init` first."))?;
+        let content = std::fs::read_to_string(&path).with_context(|| {
+            "No .treble/config.toml found. Run `treble init` first.".to_string()
+        })?;
         toml::from_str(&content).context("Failed to parse .treble/config.toml")
     }
 

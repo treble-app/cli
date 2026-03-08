@@ -17,6 +17,7 @@ The only exception is `treble show`, which calls the Figma images API to render 
 
 | Command | What it does |
 |---------|-------------|
+| `/treble:sync` | Preflight checks + smart frame selection + sync to disk |
 | `/treble:plan` | Analyze Figma frames → write analysis.json + build-state.json |
 | `/treble:dev` | Build router — detects target stack, hands off to the right build command |
 | `/treble:dev-shadcn` | Build loop for React + shadcn/ui targets |
@@ -63,12 +64,12 @@ treble show "55:1234"                    # Render by node ID
 ## Workflow
 
 ### React + shadcn/ui
-1. `treble sync` — Pull Figma data to disk
+1. `/treble:sync` — Preflight checks, smart frame selection, sync to disk
 2. `/treble:plan` — Analyze the screenshots + node trees, write analysis.json
 3. `/treble:dev` → `/treble:dev-shadcn` — Implement components in build order, reviewing each one
 
 ### WordPress
-1. `treble sync` — Pull Figma data to disk
+1. `/treble:sync` — Preflight checks, smart frame selection, sync to disk
 2. `/treble:plan` — Analyze (uses shadcn as reference catalog for primitive matching — the dev agent translates)
 3. `/treble:dev` → `/treble:dev-basecoat-wp` — Build pixel-perfect pages with hardcoded content
 4. `/treble:cms-wp` — Make pages editable (ACF fields, CPTs, nav menus, content migration)

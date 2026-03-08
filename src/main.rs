@@ -94,6 +94,13 @@ enum Commands {
         frame: Option<String>,
     },
 
+    /// Check authentication and project status
+    Status {
+        /// Output as JSON (for agent consumption)
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Render a specific Figma node and save the screenshot to disk
     Show {
         /// Node name or ID (e.g. "NavBar" or "55:1234")
@@ -132,6 +139,7 @@ async fn main() -> Result<()> {
             interactive,
         } => commands::sync::run(frame, page, node, force, interactive).await,
         Commands::Extract { frame } => commands::extract::run(frame).await,
+        Commands::Status { json } => commands::status::run(json).await,
         Commands::Tree {
             frame,
             depth,
