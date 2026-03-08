@@ -95,6 +95,11 @@ async fn run_token_login(token: &str) -> Result<()> {
         }
         Err(e) => {
             println!("{}", format!("Failed: {e}").red());
+            println!(
+                "  {} Check scopes and expiry. New token: {}",
+                "Hint:".yellow(),
+                "https://www.figma.com/settings".underline().cyan()
+            );
             return Err(e);
         }
     }
@@ -307,8 +312,18 @@ async fn run_pat_login() -> Result<()> {
     let mut config = GlobalConfig::load()?;
 
     println!("{}", "Figma Personal Access Token".bold());
-    println!("Create one at: https://www.figma.com/developers/api#access-tokens");
-    println!("Required scopes: file_content:read, file_metadata:read\n");
+    println!();
+    println!(
+        "  Generate one at: {}",
+        "https://www.figma.com/settings".underline().cyan()
+    );
+    println!("  → Security tab → Personal access tokens → Generate new token");
+    println!(
+        "  Required scopes: {}, {}",
+        "file_content:read".white().bold(),
+        "file_metadata:read".white().bold()
+    );
+    println!();
 
     let token: String = dialoguer::Password::new()
         .with_prompt("Figma PAT")
@@ -329,6 +344,15 @@ async fn run_pat_login() -> Result<()> {
         }
         Err(e) => {
             println!("{}", format!("Failed: {e}").red());
+            println!();
+            println!(
+                "  {} Check that your token has the required scopes and hasn't expired.",
+                "Hint:".yellow()
+            );
+            println!(
+                "  Generate a new one at: {}",
+                "https://www.figma.com/settings".underline().cyan()
+            );
             return Err(e);
         }
     }
