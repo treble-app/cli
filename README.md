@@ -8,15 +8,47 @@ npm install -g @treble-app/cli
 
 ## How it works
 
-Treble turns a Figma file into a running codebase in three steps:
+```mermaid
+flowchart LR
+    A["Figma design"] --> B["treble sync"]
 
-```
-Figma design → treble sync → /treble:plan → /treble:dev → production code
+    subgraph LOCAL ["On disk (.treble/)"]
+        B --> C["Screenshots\nLayer trees\nVisual properties"]
+    end
+
+    C --> D["/treble:plan"]
+
+    subgraph PLAN ["AI Analysis"]
+        D --> E["Component inventory\nDesign tokens\nBuild order"]
+    end
+
+    E --> F["/treble:dev"]
+
+    subgraph BUILD ["Build Loop"]
+        F --> G["Classify design"]
+        G --> H["Pick stack"]
+        H --> I["Scaffold project"]
+        I --> J["Generate code"]
+        J --> K{"Visual\nreview"}
+        K -- "mismatch" --> J
+        K -- "match" --> L["Next component"]
+        L --> J
+    end
+
+    L --> M["/treble:cms"]
+    M --> N["Production site"]
+
+    style A fill:#7c3aed,color:#fff
+    style N fill:#16a34a,color:#fff
+    style LOCAL fill:#1e1e2e,color:#cdd6f4
+    style PLAN fill:#1e1e2e,color:#cdd6f4
+    style BUILD fill:#1e1e2e,color:#cdd6f4
 ```
 
 1. **`treble sync`** pulls your Figma frames to disk — screenshots, layer trees, and visual properties. No API calls after the first sync.
 2. **`/treble:plan`** (Claude Code plugin) reads the synced data and produces `analysis.json` — a component inventory with design tokens, build order, primitive matching, and responsive rules.
 3. **`/treble:dev`** classifies your design, picks the right stack (Next.js, Astro, or WordPress), scaffolds the project, and builds every component with a code → visual review → architectural review loop.
+4. **`/treble:cms`** wires up content editability — Sanity, Prismic, or WordPress Gutenberg blocks.
 
 The output is a real project — `npm run dev` works, components match the Figma design, and the code follows feature-based architecture.
 
