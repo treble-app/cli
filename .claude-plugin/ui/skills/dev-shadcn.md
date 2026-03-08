@@ -27,6 +27,103 @@ If you see "image dimension limit" errors, run `/compact` before continuing.
 - `.treble/analysis.json` must exist (run `/treble:plan` first)
 - `.treble/build-state.json` must exist
 - The project should have a package.json and dev server configured
+- `/treble:dev` Step 0 (project setup) should already be complete
+
+## File Organization — Feature-Based Architecture
+
+**This is the most important section.** Every component must go in the RIGHT place. Do NOT dump everything under `src/components/`.
+
+### Directory structure
+
+```
+src/
+├── components/
+│   ├── ui/              # shadcn primitives ONLY — managed by `npx shadcn add`
+│   │   ├── button.tsx   # shadcn Button
+│   │   ├── card.tsx     # shadcn Card
+│   │   └── ...
+│   ├── common/          # reusable across 2+ features — branded, not generic
+│   │   ├── Logo.tsx     # SVG logo (used in header AND footer)
+│   │   ├── SocialLinks.tsx
+│   │   └── ThemeToggle.tsx
+│   └── layout/          # page-level layout shells
+│       ├── PageLayout.tsx       # <Header /> + <main>{children}</main> + <Footer />
+│       ├── SectionContainer.tsx # full-bleed wrapper + max-w container
+│       ├── Header.tsx
+│       └── Footer.tsx
+├── features/
+│   ├── home/            # one feature per page/domain
+│   │   ├── components/
+│   │   │   ├── HeroSection.tsx
+│   │   │   ├── FeatureGrid.tsx
+│   │   │   └── TestimonialCarousel.tsx
+│   │   └── home-page.tsx        # main export — composes all sections
+│   ├── about/
+│   │   ├── components/
+│   │   │   ├── TeamGrid.tsx
+│   │   │   └── MissionStatement.tsx
+│   │   └── about-page.tsx
+│   └── pricing/
+│       ├── components/
+│       │   ├── PricingCard.tsx
+│       │   └── PlanComparison.tsx
+│       └── pricing-page.tsx
+├── lib/                 # cn(), constants, shared utilities
+└── app/ or pages/       # THIN route files — just mount features
+    ├── page.tsx         # import { HomePage } from '@/features/home/home-page'
+    └── about/page.tsx   # import { AboutPage } from '@/features/about/about-page'
+```
+
+### Placement decision — ask this for EVERY component
+
+```
+Is it a shadcn primitive (Button, Card, Input)?
+  → src/components/ui/         (managed by shadcn CLI, don't touch)
+
+Is it a page-level layout shell (Header, Footer, PageLayout, SectionContainer)?
+  → src/components/layout/
+
+Is it used across 2+ features AND is truly generic (Logo, SocialLinks, icons)?
+  → src/components/common/
+
+Everything else → src/features/{feature}/components/
+```
+
+**The test:** If you can't name 2+ features that use a component, it does NOT belong in `components/`. A `HeroSection` is NOT reusable — it's part of the `home` feature. A `PricingCard` is NOT reusable — it's part of the `pricing` feature.
+
+### Mapping Figma frames to features
+
+Each Figma frame (page design) typically maps to one feature:
+
+| Figma Frame | Feature | Main export |
+|-------------|---------|-------------|
+| Homepage | `features/home/` | `home-page.tsx` |
+| About | `features/about/` | `about-page.tsx` |
+| Pricing | `features/pricing/` | `pricing-page.tsx` |
+| Contact | `features/contact/` | `contact-page.tsx` |
+
+**Shared sections** that appear across multiple page frames (header, footer, nav) go in `components/layout/`. Everything else stays in the feature.
+
+### Route files are THIN
+
+Route files (Next.js `app/page.tsx`, Astro `pages/index.astro`) do almost nothing:
+
+```tsx
+// app/page.tsx (Next.js)
+import { HomePage } from '@/features/home/home-page'
+export default function Page() {
+  return <HomePage />
+}
+```
+
+```astro
+---
+// pages/index.astro (Astro)
+import { HomePage } from '../features/home/home-page'
+import PageLayout from '../components/layout/PageLayout.astro'
+---
+<PageLayout><HomePage client:load /></PageLayout>
+```
 
 ## Step 0: Project Bootstrap (run ONCE before the loop)
 
@@ -59,14 +156,23 @@ Read `designSystem.fonts` from `analysis.json`. For EACH font:
 
 Read `responsive` from `analysis.json`. Set up:
 
-1. **Base layout wrapper** — create a reusable pattern for sections:
+1. **Base layout wrapper** — create `src/components/layout/SectionContainer.tsx`:
    ```tsx
-   // Full-bleed section: background edge-to-edge, content contained
-   <section className="w-full bg-[color]">
-     <div className="max-w-7xl mx-auto px-6">
-       {children}
-     </div>
-   </section>
+   interface SectionContainerProps {
+     children: React.ReactNode
+     className?: string
+     as?: 'section' | 'div' | 'header' | 'footer'
+   }
+
+   export function SectionContainer({ children, className, as: Tag = 'section' }: SectionContainerProps) {
+     return (
+       <Tag className={cn("w-full", className)}>
+         <div className="max-w-7xl mx-auto px-6">
+           {children}
+         </div>
+       </Tag>
+     )
+   }
    ```
 
 2. **Tailwind config** — ensure breakpoints match the analysis:
@@ -77,6 +183,20 @@ Read `responsive` from `analysis.json`. Set up:
    .fluid-heading-xl { font-size: clamp(2.25rem, 2vw + 1.5rem, 3.25rem); }
    .fluid-heading-lg { font-size: clamp(1.75rem, 1.5vw + 1rem, 2.5rem); }
    ```
+
+### 0c. Create feature scaffolds
+
+Read the Figma frames from analysis.json and create one feature per page:
+
+```bash
+# For each page frame:
+mkdir -p src/features/{feature-name}/components
+touch src/features/{feature-name}/{feature-name}-page.tsx
+```
+
+Create `src/components/layout/PageLayout.tsx` with Header + Footer shells.
+
+Commit: `git commit -m "chore: scaffold feature directories"`
 
 ## The Loop
 
@@ -110,31 +230,48 @@ treble tree "{frameName}" --root "{nodeId}" --json
 
 ### 3. Code
 
-Write the component following these rules:
+Write the component following these rules. **File placement follows the feature-based architecture above — refer to the placement decision flowchart.**
 
-**Atoms:**
+**Atoms (shadcn wrappers / branded primitives):**
 - If `primitiveMatch` is set — wrap/extend the matched shadcn/ui primitive
 - Generic props — no hardcoded content
 - Design tokens from the analysis, mapped to Tailwind classes
-- File at `src/components/{ComponentName}.tsx`
+- File placement:
+  - If it IS a shadcn primitive → `src/components/ui/` (use `npx shadcn add`)
+  - If it wraps a shadcn primitive with brand styling AND is used across 2+ features → `src/components/common/`
+  - If it's only used in one feature → `src/features/{feature}/components/`
 
 **Organisms (sections):**
 - Import their `composedOf` dependencies
 - Layout matching the Figma structure (flexbox, grid)
 - Accept content via props — sections are layout containers
-- File at `src/components/{ComponentName}.tsx`
+- Use `SectionContainer` from `@/components/layout/SectionContainer` for full-bleed wrappers
+- File at `src/features/{feature}/components/{ComponentName}.tsx`
+- Sections are ALMOST NEVER reusable — they belong in their feature
 
-**Pages:**
-- Import all sections in order
+**Layout components:**
+- Header, Footer, PageLayout, SectionContainer
+- File at `src/components/layout/{ComponentName}.tsx`
+
+**Feature pages:**
+- Import all sections from `./components/` in order
 - Pass concrete content to sections
-- File at `src/pages/{PageName}.tsx`
+- Export a single named component: `export function HomePage() { ... }`
+- File at `src/features/{feature}/{feature}-page.tsx`
+
+**Route files (thin wrappers):**
+- Next.js: `src/app/{route}/page.tsx` → `import { FeaturePage } from '@/features/{feature}/{feature}-page'`
+- Astro: `src/pages/{route}.astro` → `import { FeaturePage } from '../features/{feature}/{feature}-page'`
+- These files should be 3-5 lines. NO layout logic here.
 
 **Assets — handle each `assetKind`:**
 
 - **`svg-extract` (logos, icons, brand marks)** — NEVER try to reproduce these with CSS text styling:
   1. Render via `treble show "{nodeId}" --frame "{frameName}" --json` to get a screenshot
   2. Check if the Figma node contains VECTOR children — if so, note the node ID for SVG export
-  3. Create a **real SVG placeholder component** at `src/components/icons/{Name}.tsx`:
+  3. Create a **real SVG placeholder component**:
+     - If used across 2+ features (e.g. Logo) → `src/components/common/icons/{Name}.tsx`
+     - If feature-specific → `src/features/{feature}/components/icons/{Name}.tsx`
      ```tsx
      // TODO: Replace with real SVG exported from Figma node {nodeId}
      // Export: Figma → select node → right-click → Copy as SVG → SVGO → paste here
@@ -250,7 +387,7 @@ Write the visual review result to `build-state.json`:
 {
   "ComponentName": {
     "status": "implemented",
-    "filePath": "src/components/ComponentName.tsx",
+    "filePath": "src/features/{feature}/components/ComponentName.tsx",
     "generatedAt": "ISO-8601",
     "attempts": 1,
     "visualReview": {
@@ -268,12 +405,14 @@ Write the visual review result to `build-state.json`:
 
 After visual review passes, review the code architecturally (text-only, fine in main context):
 
-1. Is it using primitives correctly? Not re-implementing what shadcn/ui provides?
-2. Are props generic? No hardcoded strings that should be props?
-3. Is the component properly composed? Using its `composedOf` dependencies?
-4. Is it following React/Tailwind conventions?
-5. Is the Tailwind usage correct? Using design tokens, not arbitrary values?
-6. Is the component properly typed (TypeScript)?
+1. **File placement correct?** Feature-specific components in `features/`, shared in `components/common/` or `layout/`? Nothing dumped in a flat `src/components/` grab bag?
+2. Is it using primitives correctly? Not re-implementing what shadcn/ui provides?
+3. Are props generic? No hardcoded strings that should be props?
+4. Is the component properly composed? Using its `composedOf` dependencies?
+5. Is it following React/Tailwind conventions?
+6. Is the Tailwind usage correct? Using design tokens, not arbitrary values?
+7. Is the component properly typed (TypeScript)?
+8. **Feature page wired?** Is the component imported in its feature's `{feature}-page.tsx`?
 
 Write the review result:
 ```json
@@ -294,7 +433,7 @@ Write the review result:
 
 Once both reviews pass:
 1. Update `build-state.json` with final status
-2. Commit: `git add src/components/{ComponentName}.tsx .treble/build-state.json && git commit -m "feat: implement {ComponentName}"`
+2. Commit: `git add src/features/{feature}/components/{ComponentName}.tsx .treble/build-state.json && git commit -m "feat({feature}): implement {ComponentName}"`
 3. Move to the next component in build order
 4. Go back to step 1
 
