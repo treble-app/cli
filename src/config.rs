@@ -1,11 +1,11 @@
-//! Global config at ~/.treble-cli/config.toml
+//! Global config at ~/.treble/config.toml
 //! Project config at .treble/config.toml
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-// ── Global config (~/.treble-cli/config.toml) ───────────────────────────
+// ── Global config (~/.treble/config.toml) ───────────────────────────
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct GlobalConfig {
@@ -27,7 +27,7 @@ pub struct GlobalConfig {
 impl GlobalConfig {
     pub fn path() -> Result<PathBuf> {
         let home = dirs::home_dir().context("Cannot determine home directory")?;
-        Ok(home.join(".treble-cli").join("config.toml"))
+        Ok(home.join(".treble").join("config.toml"))
     }
 
     pub fn load() -> Result<Self> {
