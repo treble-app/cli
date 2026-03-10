@@ -1,3 +1,11 @@
+## [1.1.8](https://github.com/treble-app/cli/compare/v1.1.7...v1.1.8) (2026-03-10)
+
+
+### Bug Fixes
+
+* correct skill frontmatter and hand-off invocation ([e167239](https://github.com/treble-app/cli/commit/e16723975091b1409a0b4906d1d7facca1e475cb))
+* increase parallel plan subagents from 3 to 5 ([cd7f2a9](https://github.com/treble-app/cli/commit/cd7f2a91d84567999a711aa004bfcba2c951f054))
+
 ## [1.1.7](https://github.com/treble-app/cli/compare/v1.1.6...v1.1.7) (2026-03-10)
 
 
