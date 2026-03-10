@@ -1,3 +1,10 @@
+## [1.1.5](https://github.com/treble-app/cli/compare/v1.1.4...v1.1.5) (2026-03-10)
+
+
+### Bug Fixes
+
+* enforce parallel subagent spawning in plan command ([3830c39](https://github.com/treble-app/cli/commit/3830c39e70294a08d131cbacf085c05f5beffba1))
+
 ## [1.1.4](https://github.com/treble-app/cli/compare/v1.1.3...v1.1.4) (2026-03-08)
 
 
