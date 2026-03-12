@@ -1,3 +1,10 @@
+## [1.1.10](https://github.com/treble-app/cli/compare/v1.1.9...v1.1.10) (2026-03-12)
+
+
+### Bug Fixes
+
+* add discovery guard rail to sync prompt ([25e6f57](https://github.com/treble-app/cli/commit/25e6f573af174cf42092d82586c6afd7400bdd91))
+
 ## [1.1.9](https://github.com/treble-app/cli/compare/v1.1.8...v1.1.9) (2026-03-12)
 
 
